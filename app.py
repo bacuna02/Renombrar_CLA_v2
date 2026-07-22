@@ -3,7 +3,9 @@
 # =========================================================
 #
 # INSTALAR:
-# pip install streamlit pdfplumber pandas openpyxl
+# pip install streamlit pdfplumber pandas openpyxl pytesseract pdf2image
+#
+# Además, instala Tesseract OCR en tu sistema.
 #
 # EJECUTAR:
 # streamlit run app.py
@@ -17,6 +19,8 @@ import re
 import zipfile
 import io
 from PIL import Image
+import pytesseract
+from pdf2image import convert_from_bytes
 
 # ----------------------------
 # LOGO
@@ -165,23 +169,32 @@ if uploaded_zip:
                         texto_completo = ""
 
                         # =================================================
-                        # LEER PDF
+                        # LEER PDF (con fallback OCR)
                         # =================================================
 
                         with zip_in.open(nombre_pdf) as archivo_pdf:
 
                             contenido_pdf = archivo_pdf.read()
-
                             pdf_bytes = io.BytesIO(contenido_pdf)
 
                             with pdfplumber.open(pdf_bytes) as pdf:
-
                                 for pagina in pdf.pages:
-
                                     texto = pagina.extract_text()
 
-                                    if texto:
+                                    if texto and texto.strip():
                                         texto_completo += texto + "\n"
+                                    else:
+                                        # Si no hay texto, usar OCR
+                                        imagenes = convert_from_bytes(
+                                            contenido_pdf,
+                                            dpi=300,
+                                            first_page=pagina.page_number+1,
+                                            last_page=pagina.page_number+1
+                                        )
+                                        for img in imagenes:
+                                            texto_ocr = pytesseract.image_to_string(img, lang="spa")
+                                            if texto_ocr.strip():
+                                                texto_completo += texto_ocr + "\n"
 
                         # =================================================
                         # EXTRAER DATOS
@@ -215,12 +228,7 @@ if uploaded_zip:
 
                             total_ok += 1
 
-                        # =================================================
-                        # SI NO ENCUENTRA DATOS
-                        # =================================================
-
                         else:
-
                             # Guardar PDF original
                             zipf.writestr(
                                 nombre_pdf,
@@ -236,10 +244,6 @@ if uploaded_zip:
                             })
 
                             total_error += 1
-
-                    # =====================================================
-                    # SI OCURRE ERROR
-                    # =====================================================
 
                     except Exception as e:
 
@@ -329,4 +333,3 @@ if uploaded_zip:
                 mime="application/zip"
             )
 
-            st.success("✅ Proceso finalizado")
